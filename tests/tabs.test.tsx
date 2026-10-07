@@ -199,6 +199,11 @@ test('the pane speaks the language of the desktop and copies a chosen icon file'
   on('fs.read', ($, e) =>
     e.path === CONFIG ? { deny: 'the mod must not read config.json' } : { value: { base64: 'iVBORw0KGgo=' } },
   )
+  const writes: string[] = []
+  on('fs.write', ($, e) => {
+    writes.push(e.path)
+    return { value: undefined }
+  })
   on('process.run', ($, e) => {
     runs.push([...e.argv])
     const stdout =
@@ -226,10 +231,16 @@ test('the pane speaks the language of the desktop and copies a chosen icon file'
   await pane.press({ key: 'file-0' })
   await pane.unmount()
 
+  // The dialog is the plugin's own script file, run with the prompt as its one argument.
+  const dialog = runs.find(argv => argv[0] === 'osascript')
+  expect(dialog?.[1]).toMatch(/\/helper\/choose-icon\.applescript$/)
+  expect(dialog?.slice(2)).toEqual(['Symbol für „alpha“'])
+
   const target = runs.find(argv => argv[0] === 'sips')
   expect(target?.slice(0, 6)).toEqual(['sips', '-s', 'format', 'png', '-Z', '64'])
   expect(target?.[6]).toBe('/Users/t/Pictures/logo.jpg')
   expect(target?.[8]).toMatch(/^\/Users\/t\/\.claude\/project-tabs\/icons\/alpha-[0-9a-f]+\.png$/)
+  expect(writes).toContain(target?.[8])
 })
 
 test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers the tabs', async ($, on) => {
@@ -278,9 +289,8 @@ test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers t
     const ok = (stdout = '') => ({
       value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
     })
-    if (e.argv[0] === 'id') return ok('501\n')
-    if (e.argv[1] === 'print') return isLoaded ? ok() : { value: { ...ok().value, exitCode: 113 } }
-    if (e.argv[1] === 'bootstrap') isLoaded = true
+    if (e.argv[1] === 'list') return isLoaded ? ok() : { value: { ...ok().value, exitCode: 113 } }
+    if (e.argv[1] === 'submit') isLoaded = true
     return ok()
   })
 
@@ -302,12 +312,11 @@ test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers t
     'claude://code/new?folder=%2Fp%2Fgamma&source=project-tabs',
     null,
   ])
-  expect(
-    writes[`${HOME}/Library/LaunchAgents/com.github.tripolskiydigital.claude-tabs.hotkeys.plist`],
-  ).toContain(`${HOME}/.claude/project-tabs/bin/tabs-hotkeys`)
+  // launchd runs the helper with no file of its own: nothing goes to ~/Library/LaunchAgents.
   expect(runs).toContain(
-    `launchctl bootstrap gui/501 ${HOME}/Library/LaunchAgents/com.github.tripolskiydigital.claude-tabs.hotkeys.plist`,
+    `launchctl submit -l com.github.tripolskiydigital.claude-tabs.hotkeys -- ${HOME}/.claude/project-tabs/bin/tabs-hotkeys`,
   )
+  expect(Object.keys(writes).some(path => path.includes('LaunchAgents'))).toBe(false)
   expect(runs.some(run => run.startsWith('swiftc'))).toBe(false)
 
   const band = await $.ui.mount({ ...BAND, surface: 'desktop' })

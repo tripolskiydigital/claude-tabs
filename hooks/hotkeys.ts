@@ -4,7 +4,7 @@
  * never crosses an import.
  */
 
-/** The launchd job that runs helper/tabs-hotkeys.swift. */
+/** The launchd job (`launchctl submit`, no file of its own) that runs helper/tabs-hotkeys.swift. */
 export const AGENT_LABEL = 'com.github.tripolskiydigital.claude-tabs.hotkeys'
 
 /** Command Line Tools that ship this module map twice fail every Swift build; a VFS overlay hides one. */
@@ -17,7 +17,6 @@ export type HotkeyPaths = {
   config: string
   binary: string
   build: string
-  plist: string
   source: string
 }
 
@@ -28,7 +27,6 @@ export function hotkeyPaths(home: string, pluginRoot: string): HotkeyPaths {
     config: `${base}/hotkeys.json`,
     binary: `${base}/bin/tabs-hotkeys`,
     build: `${base}/build`,
-    plist: `${home}/Library/LaunchAgents/${AGENT_LABEL}.plist`,
     source: `${pluginRoot}/helper/tabs-hotkeys.swift`,
   }
 }
@@ -44,31 +42,4 @@ export function overlayJson(emptyModulemap: string): string {
     'case-sensitive': 'false',
     roots: [{ type: 'file', name: DUPLICATE_MODULEMAP, 'external-contents': emptyModulemap }],
   })
-}
-
-function escapeXml(text: string): string {
-  return text.replace(/[<>&"']/g, c => `&#${c.charCodeAt(0)};`)
-}
-
-/** The launchd job: start at login, restart if it ends. */
-export function plistFor(binary: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${AGENT_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${escapeXml(binary)}</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>ProcessType</key>
-  <string>Interactive</string>
-</dict>
-</plist>
-`
 }

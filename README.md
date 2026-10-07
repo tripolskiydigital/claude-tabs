@@ -77,7 +77,7 @@ The icon is found automatically when the project has one: `favicon.svg/png/ico`,
 
 Shortcuts are off until you switch them on: in the pane, **Keyboard shortcuts** → **⌃1–9** or **⌘1–9**. The tabs then show their number, and ⌃1 opens the first pinned project's last session, ⌃2 the second, up to 9.
 
-A mod can't bind keys in Claude Desktop itself, so switching shortcuts on builds a tiny helper (`helper/tabs-hotkeys.swift`, about 100 lines) and runs it with launchd as `com.github.tripolskiydigital.claude-tabs.hotkeys`. It holds the keys **only while Claude Desktop is the frontmost app**; in any other app ⌃1…⌃9 do what they always did. It needs no Accessibility or other permissions. **Off** stops it and removes it from launchd.
+A mod can't bind keys in Claude Desktop itself, so switching shortcuts on builds a tiny helper from `helper/tabs-hotkeys.swift` (about 100 lines, in this repository) with `swiftc`, and has launchd run it with `launchctl submit` as `com.github.tripolskiydigital.claude-tabs.hotkeys`. No launchd file is written: the job lasts until you log out, and the mod submits it again at the next session start while shortcuts are on. The helper holds the keys **only while Claude Desktop is the frontmost app**; in any other app ⌃1…⌃9 do what they always did. It needs no Accessibility or other permissions and makes no network requests. **Off** stops it with `launchctl remove`.
 
 ⌘1–⌘3 are Claude Desktop's own shortcuts (new chat, task, code session); the ⌘ variant takes them over while it is on. If ⌃1…⌃9 switch desktops on your Mac (System Settings → Keyboard → Keyboard Shortcuts → Mission Control), use ⌘ or turn those off.
 
@@ -96,6 +96,44 @@ Everything stays on your Mac; the mod makes no network requests.
 
 "Unread" means the session finished after you last looked at it. The mod polls these files every 4 seconds, reading only the ones that changed.
 
+## What the mod reads, writes and runs
+
+**Nothing leaves your Mac.** The mod makes no network requests and sends no data anywhere; the only thing it hands outside itself is a `claude://` link, opened by Claude Desktop on the same Mac.
+
+**Reads**
+
+- Claude Desktop's session records, `~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json`: each session's folder, title, archive flag and times.
+- Claude Code's running-session files, `~/.claude/sessions/*.json`: each running session's status.
+- Pinned projects' folders, up to four levels deep, for a favicon (`favicon.*`, `icon.*`, `apple-touch-icon.png`, `.claude/icon.*`), skipping `node_modules`, `.git`, build output and the like.
+- A picture you choose as an icon.
+
+**Writes**, all under `~/.claude/project-tabs/` (besides the plugin store Claude Code keeps for it):
+
+- `icons/`: copies of the pictures you choose as icons.
+- `hotkeys.json`: the modifier and where each tab 1…9 leads. The shortcut helper reads it and acts on it; nothing else does. Written only while shortcuts are on.
+- `bin/tabs-hotkeys` (and a `README` beside it): the shortcut helper built from `helper/tabs-hotkeys.swift`. Only when you switch shortcuts on.
+- `build/overlay.yaml`, `build/empty.modulemap`: a build setting for `swiftc`, written only on Macs whose Command Line Tools ship a Swift module map twice (a known packaging bug that stops every Swift build); it maps the duplicate onto an empty file for this one build.
+
+**Runs**, each by name with its arguments:
+
+| Program | When | Why |
+| --- | --- | --- |
+| `open claude://code/…` | you click a tab or a recent session, or press a shortcut | switches Claude Desktop to that session |
+| `ps -A -o pid=` | every 4 seconds | tells running sessions from files left by sessions that crashed |
+| `grep -o -m 1 "locale"… config.json` | at session start, and when Claude's settings change | picks out the interface language without the mod reading the file, which also holds account data |
+| `osascript helper/choose-icon.applescript "<prompt>"` | you press **Choose file…** | shows the system's file dialog; the script is in this repository |
+| `sips -s format png -Z 64 <picture> --out <icon>` | after you choose a picture | scales it to 64px |
+| `swiftc -O -o <helper> helper/tabs-hotkeys.swift` | you switch shortcuts on, or the plugin updates while they are on | builds the shortcut helper |
+| `launchctl list` / `submit` / `remove` `com.github.tripolskiydigital.claude-tabs.hotkeys` | shortcuts on, at session start, shortcuts off | starts, checks and stops the shortcut helper |
+
+**Hooks and commands**
+
+- `session.start`: registers the `/tabs` command, starts the 4-second refresh, and restarts the shortcut helper if shortcuts are on.
+- `command.run` for `/tabs` only: opens the settings pane. No other command is touched.
+- `ui.render` for the band above the prompt and for the mod's own pane: draws the tabs and the pane.
+
+The mod does not hook prompts, tool calls or the conversation, and adds no tools or agents for Claude.
+
 ## Limits
 
 - Mods can't change the app's own window: the tabs live above the prompt of each session, and the sidebar stays.
@@ -104,7 +142,7 @@ Everything stays on your Mac; the mod makes no network requests.
 
 ## Uninstall
 
-Switch keyboard shortcuts **Off** in the pane first (it removes the helper from launchd), then:
+Switch keyboard shortcuts **Off** in the pane first (it stops the helper), then:
 
 ```bash
 claude plugin uninstall project-tabs@claude-tabs

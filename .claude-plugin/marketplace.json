@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Project tabs for Claude Desktop's Code tab",
-    "version": "0.5.1"
+    "version": "0.6.0"
   },
   "plugins": [
     {
       "name": "project-tabs",
       "source": "./",
       "description": "Pinned projects as horizontal tabs in Claude Desktop's Code tab (macOS): project icons, live session status, one click to a project's last session. Reads Claude Desktop's local session records and Claude Code's running-session files; no network. Optional ⌃1–9 shortcuts build and run a small launchd helper (off by default).",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "author": {
         "name": "tripolskiydigital"
       },

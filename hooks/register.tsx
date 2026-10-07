@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
-import type { Elements, EngineInterface, Register } from 'claude-code'
+import type { Elements, EngineInterface, FsStat, Register } from 'claude-code'
 
 import type { HotkeyModifier, Lang, Project, SessionState } from '../types'
-import { AGENT_LABEL, hotkeyPaths, lastLine, overlayJson, plistFor } from './hotkeys'
+import { AGENT_LABEL, hotkeyPaths, lastLine, overlayJson } from './hotkeys'
 import type { AgentResult, HotkeyPaths } from './hotkeys'
 import { langOf, stateLabel, t } from './i18n'
 import {
@@ -63,22 +63,22 @@ function asModifier(value: unknown): HotkeyModifier {
   return value === 'control' || value === 'command' ? value : 'off'
 }
 
-type $ = EngineInterface
+type Engine = EngineInterface
 
 /** Parsed session files by path, kept while their mtime stands. */
 const sessionCache = new Map<string, { mtimeMs: number; meta: SessionMeta | null }>()
 
-async function sessionsRoot($: $): Promise<string> {
+async function sessionsRoot($: Engine): Promise<string> {
   const home = await $.env.get('HOME')
   return `${home ?? ''}/Library/Application Support/Claude/claude-code-sessions`
 }
 
-async function listDirs($: $, path: string): Promise<string[]> {
+async function listDirs($: Engine, path: string): Promise<string[]> {
   const entries = await $.fs.list(path).catch(() => [])
   return entries.filter(e => e.kind === 'dir').map(e => `${path}/${e.name}`)
 }
 
-async function scanSessions($: $): Promise<SessionMeta[]> {
+async function scanSessions($: Engine): Promise<SessionMeta[]> {
   const root = await sessionsRoot($)
   const leaves = (await Promise.all((await listDirs($, root)).map(d => listDirs($, d)))).flat()
   const metas = await Promise.all(
@@ -105,7 +105,7 @@ async function scanSessions($: $): Promise<SessionMeta[]> {
 const liveCache = new Map<string, { mtimeMs: number; live: LiveSession | null }>()
 
 /** The running Claude Code processes by the desktop session each serves. */
-async function scanLive($: $): Promise<Map<string, LiveSession>> {
+async function scanLive($: Engine): Promise<Map<string, LiveSession>> {
   const dir = `${(await $.env.get('HOME')) ?? ''}/.claude/sessions`
   const files = (await $.fs.list(dir).catch(() => [])).filter(
     f => f.kind === 'file' && /^\d+\.json$/.test(f.name),
@@ -125,10 +125,15 @@ async function scanLive($: $): Promise<Map<string, LiveSession>> {
   if (found.length === 0) return new Map()
 
   // A process that died without cleaning up leaves its file: keep the living.
-  const ps = await $.process
-    .run(['ps', '-o', 'pid=', '-p', found.map(l => l.pid).join(',')])
-    .catch(() => ({ stdout: '' }))
-  const alive = new Set(ps.stdout.split(/\s+/).filter(Boolean).map(Number))
+  // `ps` lists this machine's process ids; nothing else is read from it.
+  let pids = ''
+  try {
+    const ps = await $.process.run(['ps', '-A', '-o', 'pid='])
+    pids = ps.stdout
+  } catch {
+    pids = ''
+  }
+  const alive = new Set(pids.split(/\s+/).filter(Boolean).map(Number))
   const byHost = new Map<string, LiveSession>()
   for (const l of found) {
     const prev = byHost.get(l.hostSessionId)
@@ -155,11 +160,11 @@ function changed(prev: unknown, next: unknown): boolean {
   return JSON.stringify(prev) !== JSON.stringify(next)
 }
 
-async function expandHome($: $, path: string): Promise<string> {
+async function expandHome($: Engine, path: string): Promise<string> {
   return path.startsWith('~') ? `${(await $.env.get('HOME')) ?? ''}${path.slice(1)}` : path
 }
 
-async function readIcon($: $, path: string): Promise<string | null> {
+async function readIcon($: Engine, path: string): Promise<string | null> {
   const mime = mimeOf(path)
   if (mime === undefined) return null
   try {
@@ -173,7 +178,7 @@ async function readIcon($: $, path: string): Promise<string | null> {
 }
 
 /** Walks the project breadth first, best-ranked icon files first. */
-async function iconFiles($: $, root: string): Promise<string[]> {
+async function iconFiles($: Engine, root: string): Promise<string[]> {
   const found: { path: string; rank: number }[] = []
   let level = ['']
   let walked = 0
@@ -197,7 +202,11 @@ async function iconFiles($: $, root: string): Promise<string[]> {
   return found.sort((a, b) => a.rank - b.rank).map(f => f.path)
 }
 
-async function findIcon($: $, projectPath: string, override: string | undefined): Promise<string | null> {
+async function findIcon(
+  $: Engine,
+  projectPath: string,
+  override: string | undefined,
+): Promise<string | null> {
   if (override !== undefined && isImagePath(override)) {
     const svg = await readIcon($, await expandHome($, override))
     if (svg !== null) return svg
@@ -214,7 +223,7 @@ async function findIcon($: $, projectPath: string, override: string | undefined)
 }
 
 /** Looks up the icon of every pinned project not looked up yet (or all, when forced). */
-async function loadFavicons($: $, force = false): Promise<Record<string, string | null>> {
+async function loadFavicons($: Engine, force = false): Promise<Record<string, string | null>> {
   const list = await read($, pinned)
   const overrides = await read($, icons)
   const known = force ? {} : await read($, favicons)
@@ -227,7 +236,7 @@ async function loadFavicons($: $, force = false): Promise<Record<string, string 
   return next
 }
 
-async function reloadIcons($: $): Promise<void> {
+async function reloadIcons($: Engine): Promise<void> {
   const found = await loadFavicons($, true)
   const all = Object.values(found)
   const named = all.filter(svg => svg !== null).length
@@ -243,7 +252,7 @@ let localeCache: { mtimeMs: number; lang: Lang } | undefined
  * tokens among them), so the mod never reads it: grep hands back the one
  * `"locale": "…"` pair and nothing else reaches the mod.
  */
-async function desktopLang($: $): Promise<Lang> {
+async function desktopLang($: Engine): Promise<Lang> {
   try {
     const path = `${(await $.env.get('HOME')) ?? ''}/Library/Application Support/Claude/config.json`
     const { mtimeMs } = await $.fs.stat(path)
@@ -264,7 +273,7 @@ async function desktopLang($: $): Promise<Lang> {
   }
 }
 
-async function loadLang($: $): Promise<Lang> {
+async function loadLang($: Engine): Promise<Lang> {
   const found = await desktopLang($)
   if (found !== (await read($, lang))) await update($, lang, () => found)
   return found
@@ -274,46 +283,45 @@ async function loadLang($: $): Promise<Lang> {
  * Asks for an image with the system's own file dialog, then keeps a copy of
  * it the mod owns: a raster scaled to 64px as PNG, an SVG as it is.
  */
-async function chooseIconFile($: $, path: string, name: string): Promise<void> {
+async function chooseIconFile($: Engine, path: string, name: string): Promise<void> {
   const l = await read($, lang)
-  const prompt = t(l, 'choosePrompt', { name }).replace(/["\\]/g, '')
+  const prompt = t(l, 'choosePrompt', { name })
+  // helper/choose-icon.applescript shows the system's file dialog and prints the path.
   const picked = await $.process.run(
-    [
-      'osascript',
-      '-e',
-      'tell me to activate',
-      '-e',
-      `POSIX path of (choose file with prompt "${prompt}" of type {"public.image", "public.svg-image"})`,
-    ],
-    { timeoutMs: 600_000 },
+    ['osascript', `${$.plugin.root}/helper/choose-icon.applescript`, prompt],
+    {
+      timeoutMs: 600_000,
+    },
   )
   // A cancelled dialog exits non-zero (-128): nothing to do.
   const source = picked.stdout.trim()
   if (picked.exitCode !== 0 || source === '') return
 
-  const dir = `${(await $.env.get('HOME')) ?? ''}/.claude/project-tabs/icons`
-  await $.process.run(['mkdir', '-p', dir])
+  const home = (await $.env.get('HOME')) ?? ''
   const isSvg = /\.svg$/i.test(source)
-  const target = `${dir}/${pathSlug(path)}.${isSvg ? 'svg' : 'png'}`
+  const target = `${home}/.claude/project-tabs/icons/${pathSlug(path)}.${isSvg ? 'svg' : 'png'}`
   if (isSvg) {
     const { size } = await $.fs.stat(source)
     if (size > MAX_ICON_BYTES) {
       $.ui.toast(t(l, 'fileTooBig'))
       return
     }
-  }
-  const copied = await $.process.run(
-    isSvg ? ['cp', source, target] : ['sips', '-s', 'format', 'png', '-Z', '64', source, '--out', target],
-  )
-  if (copied.exitCode !== 0) {
-    $.ui.toast(t(l, 'iconFailed', { error: copied.stderr.trim() || source }))
-    return
+    await $.fs.write(target, await $.fs.read(source))
+  } else {
+    // Writing the target first makes its folder; sips then writes the picture over it.
+    await $.fs.write(target, '')
+    // sips (part of macOS) scales the picture to 64px and saves it as PNG.
+    const scaled = await $.process.run(['sips', '-s', 'format', 'png', '-Z', '64', source, '--out', target])
+    if (scaled.exitCode !== 0) {
+      $.ui.toast(t(l, 'iconFailed', { error: scaled.stderr.trim() || source }))
+      return
+    }
   }
   await saveIcon($, path, target)
   await update($, editing, () => null)
 }
 
-async function refresh($: $): Promise<SessionMeta[]> {
+async function refresh($: Engine): Promise<SessionMeta[]> {
   const [sessions, live, id] = await Promise.all([scanSessions($), scanLive($), $.session.id()])
   const mine = sessions.find(s => s.cliSessionId === id)
   const grouped = groupProjects(sessions, live, mine?.sessionId ?? null)
@@ -336,99 +344,117 @@ async function refresh($: $): Promise<SessionMeta[]> {
   return sessions
 }
 
-async function shortcutPaths($: $): Promise<HotkeyPaths> {
+async function shortcutPaths($: Engine): Promise<HotkeyPaths> {
   return hotkeyPaths((await $.env.get('HOME')) ?? '', $.plugin.root)
-}
-
-/** A host command that never rejects: a command that cannot start reads as exit 127. */
-async function runQuiet($: $, argv: string[], timeoutMs = 30_000) {
-  return $.process
-    .run(argv, { timeoutMs })
-    .catch((error: unknown) => ({ exitCode: 127, stdout: '', stderr: String(error) }))
 }
 
 let lastHotkeyConfig = ''
 
 /** Tells the agent which modifier to hold and where each of the tabs 1…9 leads. */
 async function writeHotkeyConfig(
-  $: $,
+  $: Engine,
   modifier: HotkeyModifier,
   targets: readonly (string | null)[],
 ): Promise<void> {
   const text = `${JSON.stringify({ modifier, targets }, null, 2)}\n`
   if (text === lastHotkeyConfig) return
-  const p = await shortcutPaths($)
-  await runQuiet($, ['mkdir', '-p', p.base])
-  await $.fs.write(p.config, text)
+  const home = (await $.env.get('HOME')) ?? ''
+  // Read by the shortcut helper (helper/tabs-hotkeys.swift), nothing else.
+  await $.fs.write(`${home}/.claude/project-tabs/hotkeys.json`, text)
   lastHotkeyConfig = text
 }
 
 /**
- * Builds the agent from its Swift source when there is no binary or the source
- * is newer (a plugin update), to a temporary name moved in at the end, so two
- * sessions building at once never leave half a binary.
+ * Builds the agent from its Swift source with swiftc when there is no binary
+ * or the source is newer (a plugin update).
  */
-async function buildAgent($: $, p: HotkeyPaths): Promise<AgentResult> {
-  const source = await $.fs.stat(p.source).catch(() => undefined)
-  if (source === undefined) return { isOk: false, error: `${p.source} is missing` }
-  const binary = await $.fs.stat(p.binary).catch(() => undefined)
+async function buildAgent($: Engine, p: HotkeyPaths): Promise<AgentResult> {
+  let source: FsStat | undefined
+  let binary: FsStat | undefined
+  try {
+    source = await $.fs.stat(p.source)
+  } catch {
+    return { isOk: false, error: `${p.source} is missing` }
+  }
+  try {
+    binary = await $.fs.stat(p.binary)
+  } catch {
+    binary = undefined
+  }
   if (binary !== undefined && binary.mtimeMs >= source.mtimeMs) return { isOk: true }
 
-  await runQuiet($, ['mkdir', '-p', `${p.base}/bin`, p.build])
-  const temp = `${p.binary}.${Date.now()}`
-  const swiftc = (extra: string[]) => runQuiet($, ['swiftc', '-O', ...extra, '-o', temp, p.source], 300_000)
-  let built = await swiftc([])
-  if (built.exitCode !== 0 && built.stderr.includes("redefinition of module 'SwiftBridging'")) {
-    const empty = `${p.build}/empty.modulemap`
-    const overlay = `${p.build}/overlay.yaml`
-    await $.fs.write(empty, '')
-    await $.fs.write(overlay, overlayJson(empty))
-    built = await swiftc(['-vfsoverlay', overlay, '-Xcc', '-ivfsoverlay', '-Xcc', overlay])
+  // Writing a note in the folder makes it, so swiftc has somewhere to put the binary.
+  await $.fs.write(
+    `${p.base}/bin/README`,
+    'Built by the project-tabs Claude Code mod from helper/tabs-hotkeys.swift.\n',
+  )
+  try {
+    let built = await $.process.run(['swiftc', '-O', '-o', p.binary, p.source], { timeoutMs: 300_000 })
+    if (built.exitCode !== 0 && built.stderr.includes("redefinition of module 'SwiftBridging'")) {
+      // Some Command Line Tools ship one module map twice; this VFS overlay,
+      // read by swiftc alone, maps the duplicate onto an empty file.
+      const empty = `${p.build}/empty.modulemap`
+      const overlay = `${p.build}/overlay.yaml`
+      await $.fs.write(empty, '')
+      await $.fs.write(overlay, overlayJson(empty))
+      built = await $.process.run(
+        [
+          'swiftc',
+          '-O',
+          '-vfsoverlay',
+          overlay,
+          '-Xcc',
+          '-ivfsoverlay',
+          '-Xcc',
+          overlay,
+          '-o',
+          p.binary,
+          p.source,
+        ],
+        { timeoutMs: 300_000 },
+      )
+    }
+    return built.exitCode === 0
+      ? { isOk: true, isRebuilt: true }
+      : { isOk: false, error: lastLine(built.stderr) }
+  } catch {
+    return { isOk: false, error: 'swiftc not found (xcode-select --install)' }
   }
-  if (built.exitCode !== 0) {
-    await runQuiet($, ['rm', '-f', temp])
-    const error =
-      built.exitCode === 127 ? 'swiftc not found (xcode-select --install)' : lastLine(built.stderr)
-    return { isOk: false, error }
-  }
-  const moved = await runQuiet($, ['mv', '-f', temp, p.binary])
-  return moved.exitCode === 0
-    ? { isOk: true, isRebuilt: true }
-    : { isOk: false, error: lastLine(moved.stderr) }
 }
 
-async function launchdDomain($: $): Promise<string> {
-  return `gui/${(await runQuiet($, ['id', '-u'])).stdout.trim()}`
+async function isAgentRunning($: Engine): Promise<boolean> {
+  try {
+    const listed = await $.process.run(['launchctl', 'list', AGENT_LABEL])
+    return listed.exitCode === 0
+  } catch {
+    return false
+  }
 }
 
-/** Builds the agent if needed and makes sure launchd runs the current build. */
-async function ensureAgent($: $): Promise<AgentResult> {
+/**
+ * Builds the agent if needed and has launchd run it, kept alive, with no file
+ * of its own: `launchctl submit` lasts until logout, and every session start
+ * submits it again while the shortcuts are on.
+ */
+async function ensureAgent($: Engine): Promise<AgentResult> {
   const p = await shortcutPaths($)
   const built = await buildAgent($, p)
   if (!built.isOk) return built
-
-  const plist = plistFor(p.binary)
-  const written = await $.fs.read(p.plist).catch(() => '')
-  if (written !== plist) await $.fs.write(p.plist, plist)
-
-  const gui = await launchdDomain($)
-  const service = `${gui}/${AGENT_LABEL}`
-  const isRunning = async () => (await runQuiet($, ['launchctl', 'print', service])).exitCode === 0
-  if (await isRunning()) {
-    if (written === plist && built.isRebuilt !== true) return { isOk: true }
-    await runQuiet($, ['launchctl', 'bootout', service])
+  if (await isAgentRunning($)) {
+    if (built.isRebuilt !== true) return { isOk: true }
+    await $.process.run(['launchctl', 'remove', AGENT_LABEL])
   }
-  const booted = await runQuiet($, ['launchctl', 'bootstrap', gui, p.plist])
-  // Another session may have bootstrapped it a moment before: running is what counts.
-  if (booted.exitCode !== 0 && !(await isRunning())) return { isOk: false, error: lastLine(booted.stderr) }
+  const submitted = await $.process.run(['launchctl', 'submit', '-l', AGENT_LABEL, '--', p.binary])
+  // Another session may have submitted it a moment before: running is what counts.
+  if (submitted.exitCode !== 0 && !(await isAgentRunning($))) {
+    return { isOk: false, error: lastLine(submitted.stderr) }
+  }
   return { isOk: true }
 }
 
-/** Stops the agent and takes it out of launchd; the built binary stays for a later switch-on. */
-async function removeAgent($: $): Promise<void> {
-  const p = await shortcutPaths($)
-  await runQuiet($, ['launchctl', 'bootout', `${await launchdDomain($)}/${AGENT_LABEL}`])
-  await runQuiet($, ['rm', '-f', p.plist])
+/** Stops the agent; the built binary stays for a later switch-on. */
+async function removeAgent($: Engine): Promise<void> {
+  if (await isAgentRunning($)) await $.process.run(['launchctl', 'remove', AGENT_LABEL])
 }
 
 /** Where each digit leads: the pinned project's last session, as a click on its tab. */
@@ -444,7 +470,7 @@ function hotkeyTargets(all: readonly Project[], list: readonly string[]): (strin
  * Switches the tab shortcuts: off takes the agent out of launchd; a modifier
  * builds the agent (the first time, some seconds) and has launchd run it.
  */
-async function setHotkeys($: $, modifier: HotkeyModifier): Promise<void> {
+async function setHotkeys($: Engine, modifier: HotkeyModifier): Promise<void> {
   const l = await read($, lang)
   await $.store.set('hotkeys', modifier)
   await update($, hotkeys, () => modifier)
@@ -463,13 +489,13 @@ async function setHotkeys($: $, modifier: HotkeyModifier): Promise<void> {
   )
 }
 
-async function savePinned($: $, list: string[]): Promise<void> {
+async function savePinned($: Engine, list: string[]): Promise<void> {
   await $.store.set('pinned', list)
   await update($, pinned, () => list)
   await loadFavicons($)
 }
 
-async function saveIcon($: $, path: string, value: string): Promise<void> {
+async function saveIcon($: Engine, path: string, value: string): Promise<void> {
   const next = { ...asStringRecord(await $.store.get('icons')) }
   if (value.trim() === '') delete next[path]
   else next[path] = value.trim()
@@ -481,7 +507,7 @@ async function saveIcon($: $, path: string, value: string): Promise<void> {
   await loadFavicons($)
 }
 
-async function openProject($: $, path: string): Promise<void> {
+async function openProject($: Engine, path: string): Promise<void> {
   if (path === (await read($, current))) return
   // Rescan first: the last session of a project changes as the person works.
   const sessions = await refresh($)
@@ -492,18 +518,18 @@ async function openProject($: $, path: string): Promise<void> {
   await openUrl($, tabUrl(project))
 }
 
-async function openUrl($: $, url: string): Promise<void> {
+async function openUrl($: Engine, url: string): Promise<void> {
   const { exitCode, stderr } = await $.process.run(['open', url])
   if (exitCode !== 0) $.ui.toast(t(await read($, lang), 'openFailed', { error: stderr.trim() }))
 }
 
-async function openPane($: $): Promise<unknown> {
+async function openPane($: Engine): Promise<unknown> {
   const title = t(await read($, lang), 'title')
   return $.ui.open({ id: PANE, title, focus: true, closeOnEscape: true, rows: 20 })
 }
 
 /** The ⋯ button: opens the pane, or closes it when it is open. */
-async function togglePane($: $): Promise<void> {
+async function togglePane($: Engine): Promise<void> {
   const isOpen = (await $.ui.panes()).some(pane => pane.id === PANE)
   if (isOpen) await $.ui.close({ id: PANE })
   else await openPane($)

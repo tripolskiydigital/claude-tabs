@@ -1,4 +1,4 @@
-// Renders the README's screenshots with demo projects.
+// Renders the README's screenshots with demo projects, and the plugin's icon.
 //
 // The icons, counts, shortcut digits and status dots come from the mod's own
 // drawing code (hooks/lib.ts); the page around them follows Claude Desktop's
@@ -196,10 +196,37 @@ function paneScene(): string {
 
 const page = (body: string) => `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>${body}</body></html>`
 
+/** The plugin's listing icon: a band of three project tabs, the middle one waiting for you. */
+function iconPage(): string {
+  const tabCss = `
+html, body { margin: 0; width: 512px; height: 512px; background: #1d1c1b; }
+.icon { width: 512px; height: 512px; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(120% 120% at 30% 15%, #34322e 0%, #1d1c1b 60%, #141413 100%); }
+.band { display: flex; flex-direction: column; gap: 22px; padding: 30px; width: 392px; border-radius: 44px; background: #121211;
+  box-shadow: inset 0 0 0 2px #2b2a27; }
+.t { display: flex; align-items: center; gap: 22px; height: 84px; padding: 0 22px; border-radius: 22px; }
+.t.active { background: #2b2a27; }
+.sq { width: 52px; height: 52px; border-radius: 15px; flex: none; }
+.bar { height: 16px; border-radius: 8px; background: #8f8e89; flex: 1; }
+.t.active .bar { background: #ecebe7; }
+.pill { width: 44px; height: 40px; border-radius: 12px; box-shadow: inset 0 0 0 3px #4a4945; display: flex; align-items: center; justify-content: center; flex: none; }
+.pill i { width: 16px; height: 16px; border-radius: 50%; background: #c98500; }
+`
+  const tab = (color: string, opts: { active?: boolean; waiting?: boolean; short?: boolean }) =>
+    `<div class="t${opts.active ? ' active' : ''}"><span class="sq" style="background:${color}"></span><span class="bar"${
+      opts.short ? ' style="flex:0 0 120px"' : ''
+    }></span>${opts.waiting ? '<span class="pill"><i></i></span>' : ''}</div>`
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${tabCss}</style></head><body><div class="icon"><div class="band">${tab(
+    '#0f766e',
+    { active: true },
+  )}${tab('#c76b8e', { waiting: true })}${tab('#7d7fd1', { short: true })}</div></div></body></html>`
+}
+
 const SCENES = [
-  { name: 'tabs', html: page(bandScene({ hover: false })), width: 1060, height: 252 },
-  { name: 'hover', html: page(bandScene({ hover: true })), width: 1060, height: 360 },
-  { name: 'pane', html: page(paneScene()), width: 470, height: 562 },
+  { name: 'tabs', html: page(bandScene({ hover: false })), width: 1060, height: 252, out: 'docs/screenshots/tabs.png' },
+  { name: 'hover', html: page(bandScene({ hover: true })), width: 1060, height: 360, out: 'docs/screenshots/hover.png' },
+  { name: 'pane', html: page(paneScene()), width: 470, height: 562, out: 'docs/screenshots/pane.png' },
+  { name: 'icon', html: iconPage(), width: 512, height: 512, out: '.claude-plugin/icon.png' },
 ]
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -218,8 +245,8 @@ for (const scene of SCENES) {
     '--force-dark-mode',
     '--force-device-scale-factor=2',
     `--window-size=${scene.width},${scene.height}`,
-    `--screenshot=${join(outDir, `${scene.name}.png`)}`,
+    `--screenshot=${join(root, scene.out)}`,
     `file://${html}`,
   ], { stdio: 'ignore' })
-  console.log(`docs/screenshots/${scene.name}.png`)
+  console.log(scene.out)
 }
