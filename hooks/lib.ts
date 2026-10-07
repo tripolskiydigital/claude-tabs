@@ -285,25 +285,36 @@ const DOT_COLORS: Record<SessionState, [string, string]> = {
 
 export const DOT_ROW_HEIGHT = 26
 
-const COUNT_IDLE: [string, string] = ['#73726c', '#9c9a92']
+/** The count pill's fill and ring per state, from the desktop's dot colors: [fill, ring]. */
+const PILL_COLORS: Record<SessionState, { light: [string, string]; dark: [string, string] }> = {
+  waiting: { light: ['#c98500', '#a66a00'], dark: ['#a66a00', '#c98500'] },
+  unread: { light: ['#3987e5', '#2a78d6'], dark: ['#2a78d6', '#5598e7'] },
+  running: { light: ['#8a8a86', '#73726c'], dark: ['#5c5b56', '#8a8a86'] },
+  idle: { light: ['#a3a29c', '#8f8e88'], dark: ['#3a3936', '#4f4e4a'] },
+}
 
 /**
  * The session count as a pill the height of the icon and of the name's own
- * highlight, ringed, its number in the state's color: 4px from the name and
- * 4px from the tab's edge, as the icon sits.
+ * highlight, filled and ringed in the state's color, its number white: 4px
+ * from the name and 4px from the tab's edge, as the icon sits. A running
+ * session's pill pulses, as the sidebar's dot does.
  */
 export function countPillSvg(count: number, state: SessionState): string {
   const text = count > 999 ? '999+' : String(count)
   const pill = Math.max(ICON, 12 + Math.ceil(text.length * 7))
   const width = PAD + pill + PAD
-  const [light, dark] = state === 'idle' ? COUNT_IDLE : DOT_COLORS[state]
+  const { light, dark } = PILL_COLORS[state]
   const style =
-    `<style>.t{fill:${light}}.b{fill:none;stroke:rgba(0,0,0,0.16)}` +
-    `@media (prefers-color-scheme: dark){.t{fill:${dark}}.b{stroke:rgba(255,255,255,0.16)}}</style>`
+    `<style>.b{fill:${light[0]};stroke:${light[1]}}` +
+    `@media (prefers-color-scheme: dark){.b{fill:${dark[0]};stroke:${dark[1]}}}</style>`
+  const pulse =
+    state === 'running'
+      ? '<animate attributeName="opacity" values="1;0.55;1" dur="1.6s" repeatCount="indefinite"/>'
+      : ''
   return (
     `${svgOpen(width, TAB_HEIGHT)}${style}` +
-    `<rect class="b" x="${PAD + 0.5}" y="${PAD + 0.5}" width="${pill - 1}" height="${ICON - 1}" rx="${RADIUS - 0.5}"/>` +
-    `<text class="t" x="${PAD + pill / 2}" y="${TAB_HEIGHT / 2}" font-size="12" font-weight="600" font-family="-apple-system, Helvetica, Arial, sans-serif" text-anchor="middle" dominant-baseline="central">${text}</text></svg>`
+    `<rect class="b" x="${PAD + 0.5}" y="${PAD + 0.5}" width="${pill - 1}" height="${ICON - 1}" rx="${RADIUS - 0.5}" stroke-width="1">${pulse}</rect>` +
+    `<text x="${PAD + pill / 2}" y="${TAB_HEIGHT / 2}" font-size="12" font-weight="400" font-family="-apple-system, Helvetica, Arial, sans-serif" text-anchor="middle" dominant-baseline="central" fill="#ffffff">${text}</text></svg>`
   )
 }
 
