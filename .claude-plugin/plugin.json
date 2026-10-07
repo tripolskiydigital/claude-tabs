@@ -1,0 +1,11 @@
+{
+  "name": "project-tabs",
+  "version": "0.5.0",
+  "description": "Pinned projects as horizontal tabs in Claude Desktop's Code tab: project icons, live session status, ⌃1–9 shortcuts, one click to the last session.",
+  "author": { "name": "tripolskiydigital", "url": "https://github.com/tripolskiydigital" },
+  "homepage": "https://github.com/tripolskiydigital/claude-tabs",
+  "repository": "https://github.com/tripolskiydigital/claude-tabs",
+  "license": "Apache-2.0",
+  "keywords": ["tabs", "projects", "sessions", "claude-desktop", "code-tab", "productivity", "mod"],
+  "types": "./types/index.d.ts"
+}

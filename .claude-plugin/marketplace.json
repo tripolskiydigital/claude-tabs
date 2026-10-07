@@ -1,0 +1,21 @@
+{
+  "name": "claude-tabs",
+  "owner": { "name": "tripolskiydigital", "url": "https://github.com/tripolskiydigital" },
+  "metadata": {
+    "description": "Project tabs for Claude Desktop's Code tab",
+    "version": "0.5.0"
+  },
+  "plugins": [
+    {
+      "name": "project-tabs",
+      "source": "./",
+      "description": "Pinned projects as horizontal tabs in Claude Desktop's Code tab: project icons, live session status, ⌃1–9 shortcuts, one click to the last session.",
+      "version": "0.5.0",
+      "author": { "name": "tripolskiydigital" },
+      "homepage": "https://github.com/tripolskiydigital/claude-tabs",
+      "license": "Apache-2.0",
+      "keywords": ["tabs", "projects", "sessions", "claude-desktop", "productivity"],
+      "category": "productivity"
+    }
+  ]
+}
