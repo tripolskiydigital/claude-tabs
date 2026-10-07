@@ -2,6 +2,8 @@
 
 **English** · [Русский](README.ru.md)
 
+![Project tabs above the prompt in Claude Desktop](docs/screenshots/tabs.png)
+
 A mod for the **Code tab of Claude Desktop** (macOS) that turns your projects into horizontal tabs above the prompt, like browser tabs:
 
 - **Pinned projects as tabs**, each with its icon: the project's own favicon, an emoji, a picture you choose, or a colored letter.
@@ -13,6 +15,13 @@ A mod for the **Code tab of Claude Desktop** (macOS) that turns your projects in
 - **Speaks your language**: English, Deutsch, Français, Italiano, Español, Українська, Русский, following Claude Desktop's own language setting.
 
 It is built on Claude Code's **mods** (plugins of function hooks), so it does not patch the Claude app: updates of Claude don't break it, and removing the plugin removes it.
+
+<p>
+  <img src="docs/screenshots/hover.png" alt="Hovering a tab shows its recent sessions with status dots" width="64%">
+  <img src="docs/screenshots/pane.png" alt="The settings pane: shortcuts, pinned projects, icons" width="34%">
+</p>
+
+<sub>Demo projects. The tabs, icons, counts and dots are drawn by the mod's own code; [docs/demo/render.ts](docs/demo/render.ts) renders these pictures.</sub>
 
 ## Requirements
 
@@ -80,7 +89,7 @@ Everything stays on your Mac; the mod makes no network requests.
 | --- | --- |
 | Projects and their sessions | `~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json`, the desktop's own session records (folder, title, last focus) |
 | Live status (running, waiting, finished) | `~/.claude/sessions/*.json`, written by every running Claude Code process |
-| Interface language | the `locale` field of `~/Library/Application Support/Claude/config.json`; no other field of that file is read |
+| Interface language | the `locale` field of `~/Library/Application Support/Claude/config.json`, picked out by `grep`: the mod never reads the file itself, which also holds account data |
 | Switching sessions | the desktop's deep link `claude://code/continue?session=…`, opened with `open` |
 | Pins and chosen icons | the plugin's own store; chosen icon files are copied to `~/.claude/project-tabs/icons/` |
 | Keyboard shortcuts | `~/.claude/project-tabs/hotkeys.json` (which tab leads where), read by the helper in `~/.claude/project-tabs/bin/` |

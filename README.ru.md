@@ -2,6 +2,8 @@
 
 [English](README.md) · **Русский**
 
+![Вкладки проектов над полем ввода в Claude Desktop](docs/screenshots/tabs.png)
+
 Мод для **вкладки Code в Claude Desktop** (macOS), который превращает проекты в горизонтальные вкладки над полем ввода, как в браузере:
 
 - **Закреплённые проекты — вкладками**, у каждой иконка: favicon самого проекта, эмодзи, выбранная картинка или цветная буква.
@@ -13,6 +15,13 @@
 - **Говорит на твоём языке**: русский, українська, English, Deutsch, Français, Italiano, Español — по языку, выбранному в Claude Desktop.
 
 Мод сделан на **модах Claude Code** (плагины из функций-хуков) и не патчит само приложение: обновления Claude его не ломают, удаление плагина убирает его полностью.
+
+<p>
+  <img src="docs/screenshots/hover.png" alt="При наведении на вкладку — недавние сессии с кружками статуса" width="64%">
+  <img src="docs/screenshots/pane.png" alt="Панель настроек: горячие клавиши, закреплённые проекты, иконки" width="34%">
+</p>
+
+<sub>Демо-проекты. Вкладки, иконки, счётчики и кружки нарисованы кодом самого мода; картинки собирает [docs/demo/render.ts](docs/demo/render.ts).</sub>
 
 ## Требования
 
@@ -80,7 +89,7 @@ git clone https://github.com/tripolskiydigital/claude-tabs.git ~/claude-tabs
 | --- | --- |
 | Проекты и их сессии | `~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json` — записи сессий самого десктопа (папка, заголовок, последний фокус) |
 | Живой статус (работает, ждёт, закончила) | `~/.claude/sessions/*.json` — их пишет каждый запущенный процесс Claude Code |
-| Язык интерфейса | поле `locale` из `~/Library/Application Support/Claude/config.json`; другие поля этого файла не читаются |
+| Язык интерфейса | поле `locale` из `~/Library/Application Support/Claude/config.json`, его достаёт `grep`: сам файл мод не читает, в нём есть и данные аккаунта |
 | Переключение сессий | deep link десктопа `claude://code/continue?session=…`, открывается через `open` |
 | Закреплённые проекты и иконки | собственное хранилище плагина; выбранные файлы иконок копируются в `~/.claude/project-tabs/icons/` |
 | Горячие клавиши | `~/.claude/project-tabs/hotkeys.json` (какая вкладка куда ведёт), его читает помощник из `~/.claude/project-tabs/bin/` |

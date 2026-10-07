@@ -239,19 +239,24 @@ async function reloadIcons($: $): Promise<void> {
 let localeCache: { mtimeMs: number; lang: Lang } | undefined
 
 /**
- * The language the desktop is set to. Only `locale` is taken from the file,
- * which holds other things (encrypted tokens among them) the mod never reads.
+ * The language the desktop is set to. The file holds other things (encrypted
+ * tokens among them), so the mod never reads it: grep hands back the one
+ * `"locale": "…"` pair and nothing else reaches the mod.
  */
 async function desktopLang($: $): Promise<Lang> {
   try {
     const path = `${(await $.env.get('HOME')) ?? ''}/Library/Application Support/Claude/config.json`
     const { mtimeMs } = await $.fs.stat(path)
     if (localeCache?.mtimeMs === mtimeMs) return localeCache.lang
-    const raw: unknown = JSON.parse(await $.fs.read(path))
-    const locale =
-      typeof raw === 'object' && raw !== null && 'locale' in raw && typeof raw.locale === 'string'
-        ? raw.locale
-        : undefined
+    const found = await $.process.run([
+      'grep',
+      '-o',
+      '-m',
+      '1',
+      '"locale"[[:space:]]*:[[:space:]]*"[^"]*"',
+      path,
+    ])
+    const locale = /"locale"\s*:\s*"([^"]*)"/.exec(found.stdout)?.[1]
     localeCache = { mtimeMs, lang: langOf(locale) }
     return localeCache.lang
   } catch {

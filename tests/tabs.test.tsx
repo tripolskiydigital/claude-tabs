@@ -195,14 +195,18 @@ test('the pane speaks the language of the desktop and copies a chosen icon file'
       ? { value: { kind: 'file' as const, size: 900, mtimeMs: 1, isLink: false } }
       : { deny: 'missing' },
   )
+  // The settings file is never read by the mod: only grep's one pair reaches it.
   on('fs.read', ($, e) =>
-    e.path === CONFIG
-      ? { value: JSON.stringify({ locale: 'de-DE', secret: 'never read' }) }
-      : { value: { base64: 'iVBORw0KGgo=' } },
+    e.path === CONFIG ? { deny: 'the mod must not read config.json' } : { value: { base64: 'iVBORw0KGgo=' } },
   )
   on('process.run', ($, e) => {
     runs.push([...e.argv])
-    const stdout = e.argv[0] === 'osascript' ? '/Users/t/Pictures/logo.jpg\n' : ''
+    const stdout =
+      e.argv[0] === 'osascript'
+        ? '/Users/t/Pictures/logo.jpg\n'
+        : e.argv[0] === 'grep' && e.argv.at(-1) === CONFIG
+          ? '"locale": "de-DE"\n'
+          : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
 
@@ -214,7 +218,9 @@ test('the pane speaks the language of the desktop and copies a chosen icon file'
     requestId: 'project-tabs',
     props: {} as never,
   })
-  expect(await pane.find({ key: 'reload-icons' })).toMatchObject({ props: { label: 'Symbole aktualisieren' } })
+  expect(await pane.find({ key: 'reload-icons' })).toMatchObject({
+    props: { label: 'Symbole aktualisieren' },
+  })
 
   await pane.press({ key: 'edit-0' })
   await pane.press({ key: 'file-0' })
@@ -296,9 +302,9 @@ test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers t
     'claude://code/new?folder=%2Fp%2Fgamma&source=project-tabs',
     null,
   ])
-  expect(writes[`${HOME}/Library/LaunchAgents/com.github.tripolskiydigital.claude-tabs.hotkeys.plist`]).toContain(
-    `${HOME}/.claude/project-tabs/bin/tabs-hotkeys`,
-  )
+  expect(
+    writes[`${HOME}/Library/LaunchAgents/com.github.tripolskiydigital.claude-tabs.hotkeys.plist`],
+  ).toContain(`${HOME}/.claude/project-tabs/bin/tabs-hotkeys`)
   expect(runs).toContain(
     `launchctl bootstrap gui/501 ${HOME}/Library/LaunchAgents/com.github.tripolskiydigital.claude-tabs.hotkeys.plist`,
   )
