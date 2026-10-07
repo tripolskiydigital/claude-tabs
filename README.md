@@ -1,6 +1,6 @@
 # Claude Tabs — project tabs for Claude Desktop
 
-**English** · [Русский](README.ru.md)
+**English** · [Русский](docs/README.ru.md)
 
 ![Project tabs above the prompt in Claude Desktop](docs/screenshots/tabs.png)
 
@@ -12,7 +12,7 @@ A mod for the **Code tab of Claude Desktop** (macOS) that turns your projects in
 - **Live session status**, colored like the desktop's sidebar dots: the session count on each tab turns amber when a session **waits for you** (a permission or a question), blue when one **finished and is unread**, grey while one **runs**.
 - **Hover a tab** to see its 5 most recent sessions with their status dots, and jump straight to any of them.
 - **A settings pane** (the `⋯` button or `/tabs`): keyboard shortcuts, pin and unpin projects, reorder them, pick icons (file picker, emoji, or automatic), refresh icons.
-- **Speaks your language**: English, Deutsch, Français, Italiano, Español, Українська, Русский, following Claude Desktop's own language setting.
+- **Speaks your language**: English, Deutsch, Français, Italiano, Español, Українська, Русский, following Claude Desktop's own language setting; English for every other language.
 
 It is built on Claude Code's **mods** (plugins of function hooks), so it does not patch the Claude app: updates of Claude don't break it, and removing the plugin removes it.
 
