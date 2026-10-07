@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 
 const HOME = '/Users/t'
 const ROOT = `${HOME}/Library/Application Support/Claude/claude-code-sessions`
@@ -16,6 +17,11 @@ const SESSIONS: Record<string, object> = {
   'local_b3.json': { sessionId: 'local_b3', originCwd: '/p/beta', lastFocusedAt: 900, isArchived: true },
 }
 
+/** The engine's own band, beneath the plugin: empty. */
+function beneath(on: Parameters<TestBody>[1]) {
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'Box' as const }))
+}
+
 const BAND = {
   plugin: 'project-tabs',
   component: 'AbovePrompt',
@@ -23,6 +29,7 @@ const BAND = {
 } as const
 
 test('a pinned tab opens the last live session of its project', async ($, on) => {
+  beneath(on)
   const opened: string[] = []
   mock.env(on, { HOME })
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
@@ -78,6 +85,7 @@ test('a pinned tab opens the last live session of its project', async ($, on) =>
 })
 
 test('with nothing pinned the band offers to pin this project', async ($, on) => {
+  beneath(on)
   mock.env(on, { HOME })
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   mock.store(on)
@@ -95,6 +103,7 @@ test('with nothing pinned the band offers to pin this project', async ($, on) =>
 })
 
 test('live statuses color the counts, and a recent session opens itself', async ($, on) => {
+  beneath(on)
   const opened: string[] = []
   mock.env(on, { HOME })
   mock.store(on, { pinned: ['/p/alpha', '/p/beta'] })
@@ -150,6 +159,7 @@ test('live statuses color the counts, and a recent session opens itself', async 
 })
 
 test('the ⋯ button opens the pane, and a second press closes it', async ($, on) => {
+  beneath(on)
   const calls: string[] = []
   let isOpen = false
   mock.env(on, { HOME })
@@ -181,6 +191,7 @@ test('the ⋯ button opens the pane, and a second press closes it', async ($, on
 })
 
 test('the pane speaks the language of the desktop and keeps a chosen icon in the store', async ($, on) => {
+  beneath(on)
   const runs: string[][] = []
   mock.env(on, { HOME, TMPDIR: '/var/folders/x/T/' })
   mock.store(on, { pinned: ['/p/alpha'] })
@@ -248,6 +259,7 @@ test('the pane speaks the language of the desktop and keeps a chosen icon in the
 })
 
 test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers the tabs', async ($, on) => {
+  beneath(on)
   const runs: string[] = []
   const writes: Record<string, string> = {}
   mock.env(on, { HOME })
@@ -327,4 +339,28 @@ test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers t
   const alts = JSON.stringify(await band.drawn()).match(/"alt":"⌃\d"/g)
   expect(alts).toEqual(['"alt":"⌃1"', '"alt":"⌃2"'])
   await band.unmount()
+})
+
+test('a row another plugin drew in the band stays, under the tabs', async ($, on) => {
+  mock.env(on, { HOME: '/Users/t' })
+  mock.store(on, { pinned: ['/p/alpha'] })
+  on('ui.render', { component: 'AbovePrompt' }, () => ({
+    type: 'Box' as const,
+    props: { key: 'links-row' },
+    children: ['links'],
+  }))
+  on('session.id', () => ({ value: 'cli-x' }))
+  on('session.cwd', () => ({ value: '/p/alpha' }))
+  on('fs.exists', () => ({ value: false }))
+  on('fs.list', () => ({ value: [] }))
+  on('process.run', () => ({
+    value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+
+  await $.command.run({ command: 'tabs', args: '' } as never)
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ key: 'open-0' })).toBeDefined()
+  expect(await ui.find({ key: 'links-row' })).toBeDefined()
+  await ui.unmount()
 })

@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Elements, EngineInterface, FsStat, Register } from 'claude-code'
+import type { Elements, EngineInterface, FsStat, Register, RenderElement } from 'claude-code'
 
 import type { HotkeyModifier, Lang, Project, SessionState } from '../types'
 import { AGENT_LABEL, hotkeyPaths, lastLine } from './hotkeys'
@@ -540,6 +540,12 @@ function nameOf(list: readonly Project[], path: string): string {
   return list.find(p => p.path === path)?.name ?? path.split('/').filter(Boolean).at(-1) ?? path
 }
 
+/** Whether the plugins beneath drew nothing in the band. */
+function isEmptyTree(tree: RenderElement | null | undefined): boolean {
+  if (tree == null) return true
+  return tree.type === 'Box' && (tree.children === undefined || tree.children.length === 0)
+}
+
 type IconElements = { Text: Elements['desktop']['Text']; Svg?: Elements['desktop']['Svg'] }
 
 /**
@@ -627,7 +633,17 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+    // The band is one site: what the plugins beneath draw (another mod's row)
+    // stays, under the tabs.
+    const below = await next(e)
+    if (e.props.hasSurvey) return below
+    const withBelow = (tree: RenderElement) =>
+      isEmptyTree(below) ? tree : (
+        <Box flexDirection="column" rowGap={1}>
+          {tree}
+          {below}
+        </Box>
+      )
 
     const [all, list, overrides, svgs, here, l, modifier] = await Promise.all([
       read($, projects),
@@ -658,7 +674,7 @@ export const register: Register = on => {
     )
 
     if (list.length === 0) {
-      return (
+      return withBelow(
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Text dimColor>{t(l, 'noPinned')}</Text>
           {here !== '' && (
@@ -669,13 +685,13 @@ export const register: Register = on => {
             />
           )}
           {manage}
-        </Box>
+        </Box>,
       )
     }
 
     const iconEls = { Text, ...(Svg !== undefined ? { Svg } : {}) }
 
-    return (
+    return withBelow(
       <Box flexDirection="row" alignItems="center" justifyContent="space-between" columnGap={1}>
         <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1} flexShrink={1}>
           {list.map((path, i) => {
@@ -750,7 +766,7 @@ export const register: Register = on => {
           })}
         </Box>
         {manage}
-      </Box>
+      </Box>,
     )
   })
 
