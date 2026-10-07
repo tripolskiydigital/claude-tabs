@@ -347,9 +347,9 @@ export function letterOf(name: string): string {
   return (name.match(/[\p{L}\p{N}]/u)?.[0] ?? '?').toUpperCase()
 }
 
-/** An icon override is an image when it names a file; anything else is drawn as text. */
+/** An icon override is an image when it is a data URI or names a file; anything else is drawn as text. */
 export function isImagePath(icon: string): boolean {
-  return /^(~|\/)/.test(icon) && mimeOf(icon) !== undefined
+  return icon.startsWith('data:image/') || (/^(~|\/)/.test(icon) && mimeOf(icon) !== undefined)
 }
 
 /** Moves the entry at `index` by `delta` places, clamped to the list. */
@@ -372,15 +372,6 @@ export const STATE_TEXT_COLORS: Record<SessionState, string> = {
 /** The most urgent state among a project's sessions. */
 export function topState(counts: Project['counts']): SessionState {
   return STATES.find(st => counts[st] > 0) ?? 'idle'
-}
-
-/** A short stable name for a project folder: where its chosen icon is kept. */
-export function pathSlug(path: string): string {
-  let hash = 5381
-  for (const ch of path) hash = ((hash * 33) ^ ch.codePointAt(0)!) >>> 0
-  return `${baseName(path)
-    .replace(/[^\p{L}\p{N}_-]+/gu, '-')
-    .slice(0, 40)}-${hash.toString(16)}`
 }
 
 /** Emoji offered as icons, one press each. */

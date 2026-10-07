@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, FsStat, Register } from 'claude-code'
 
 import type { HotkeyModifier, Lang, Project, SessionState } from '../types'
-import { AGENT_LABEL, hotkeyPaths, lastLine, overlayJson } from './hotkeys'
+import { AGENT_LABEL, hotkeyPaths, lastLine } from './hotkeys'
 import type { AgentResult, HotkeyPaths } from './hotkeys'
 import { langOf, stateLabel, t } from './i18n'
 import {
@@ -12,7 +12,6 @@ import {
   STATES,
   DOT_ROW_HEIGHT,
   EMOJI_CHOICES,
-  pathSlug,
   STATE_TEXT_COLORS,
   SKIP_DIRS,
   groupProjects,
@@ -207,6 +206,8 @@ async function findIcon(
   projectPath: string,
   override: string | undefined,
 ): Promise<string | null> {
+  // A picture chosen in the pane is kept in the plugin's store as a data URI.
+  if (override?.startsWith('data:image/')) return override
   if (override !== undefined && isImagePath(override)) {
     const svg = await readIcon($, await expandHome($, override))
     if (svg !== null) return svg
@@ -280,8 +281,9 @@ async function loadLang($: Engine): Promise<Lang> {
 }
 
 /**
- * Asks for an image with the system's own file dialog, then keeps a copy of
- * it the mod owns: a raster scaled to 64px as PNG, an SVG as it is.
+ * Asks for an image with the system's own file dialog, then keeps it in the
+ * plugin's store as a data URI: a raster scaled to 64px as PNG, an SVG as it is.
+ * No file of the mod's is written.
  */
 async function chooseIconFile($: Engine, path: string, name: string): Promise<void> {
   const l = await read($, lang)
@@ -297,27 +299,34 @@ async function chooseIconFile($: Engine, path: string, name: string): Promise<vo
   const source = picked.stdout.trim()
   if (picked.exitCode !== 0 || source === '') return
 
-  const home = (await $.env.get('HOME')) ?? ''
-  const isSvg = /\.svg$/i.test(source)
-  const target = `${home}/.claude/project-tabs/icons/${pathSlug(path)}.${isSvg ? 'svg' : 'png'}`
-  if (isSvg) {
-    const { size } = await $.fs.stat(source)
-    if (size > MAX_ICON_BYTES) {
+  let picture: string | null
+  if (/\.svg$/i.test(source)) {
+    picture = await readIcon($, source)
+    if (picture === null) {
       $.ui.toast(t(l, 'fileTooBig'))
       return
     }
-    await $.fs.write(target, await $.fs.read(source))
   } else {
-    // Writing the target first makes its folder; sips then writes the picture over it.
-    await $.fs.write(target, '')
-    // sips (part of macOS) scales the picture to 64px and saves it as PNG.
-    const scaled = await $.process.run(['sips', '-s', 'format', 'png', '-Z', '64', source, '--out', target])
-    if (scaled.exitCode !== 0) {
+    // sips (part of macOS) scales the picture to 64px as PNG, into the temp folder.
+    const scaledPath = `${(await $.env.get('TMPDIR')) ?? '/tmp/'}`.replace(/\/?$/, '/claude-tabs-icon.png')
+    const scaled = await $.process.run([
+      'sips',
+      '-s',
+      'format',
+      'png',
+      '-Z',
+      '64',
+      source,
+      '--out',
+      scaledPath,
+    ])
+    picture = scaled.exitCode === 0 ? await readIcon($, scaledPath) : null
+    if (picture === null) {
       $.ui.toast(t(l, 'iconFailed', { error: scaled.stderr.trim() || source }))
       return
     }
   }
-  await saveIcon($, path, target)
+  await saveIcon($, path, picture)
   await update($, editing, () => null)
 }
 
@@ -383,30 +392,22 @@ async function buildAgent($: Engine, p: HotkeyPaths): Promise<AgentResult> {
   }
   if (binary !== undefined && binary.mtimeMs >= source.mtimeMs) return { isOk: true }
 
-  // Writing a note in the folder makes it, so swiftc has somewhere to put the binary.
-  await $.fs.write(
-    `${p.base}/bin/README`,
-    'Built by the project-tabs Claude Code mod from helper/tabs-hotkeys.swift.\n',
-  )
+  // The binary goes beside hotkeys.json, whose write (always first) made the folder.
   try {
     let built = await $.process.run(['swiftc', '-O', '-o', p.binary, p.source], { timeoutMs: 300_000 })
     if (built.exitCode !== 0 && built.stderr.includes("redefinition of module 'SwiftBridging'")) {
-      // Some Command Line Tools ship one module map twice; this VFS overlay,
-      // read by swiftc alone, maps the duplicate onto an empty file.
-      const empty = `${p.build}/empty.modulemap`
-      const overlay = `${p.build}/overlay.yaml`
-      await $.fs.write(empty, '')
-      await $.fs.write(overlay, overlayJson(empty))
+      // Some Command Line Tools ship one module map twice; the overlay shipped
+      // in helper/build/ maps the duplicate onto an empty file for this build.
       built = await $.process.run(
         [
           'swiftc',
           '-O',
           '-vfsoverlay',
-          overlay,
+          p.overlay,
           '-Xcc',
           '-ivfsoverlay',
           '-Xcc',
-          overlay,
+          p.overlay,
           '-o',
           p.binary,
           p.source,
@@ -604,11 +605,12 @@ function sessionCount({ Text, Svg }: IconElements, project: Project | undefined,
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'tabs', description: t(await loadLang($), 'cmdDesc') })
-    void refresh($)
     $.clock.every(REFRESH_MS, () => void refresh($))
     // Shortcuts that are on stay on: after a reboot or a plugin update the
-    // agent is started, or rebuilt, here.
+    // agent is started, or rebuilt, here, once the first refresh has written
+    // hotkeys.json (and so made the agent's folder).
     void (async () => {
+      await refresh($)
       if (asModifier(await $.store.get('hotkeys')) === 'off') return
       const agent = await ensureAgent($)
       if (!agent.isOk) $.ui.toast(t(await read($, lang), 'shortcutsFailed', { error: agent.error }))

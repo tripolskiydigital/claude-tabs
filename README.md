@@ -91,40 +91,36 @@ Everything stays on your Mac; the mod makes no network requests.
 | Live status (running, waiting, finished) | `~/.claude/sessions/*.json`, written by every running Claude Code process |
 | Interface language | the `locale` field of `~/Library/Application Support/Claude/config.json`, picked out by `grep`: the mod never reads the file itself, which also holds account data |
 | Switching sessions | the desktop's deep link `claude://code/continue?session=…`, opened with `open` |
-| Pins and chosen icons | the plugin's own store; chosen icon files are copied to `~/.claude/project-tabs/icons/` |
-| Keyboard shortcuts | `~/.claude/project-tabs/hotkeys.json` (which tab leads where), read by the helper in `~/.claude/project-tabs/bin/` |
+| Pins and chosen icons | the plugin's own store (Claude Code keeps it); a chosen picture is kept there, scaled to 64px |
+| Keyboard shortcuts | `~/.claude/project-tabs/hotkeys.json` (which tab leads where), read by the helper `~/.claude/project-tabs/tabs-hotkeys` |
 
 "Unread" means the session finished after you last looked at it. The mod polls these files every 4 seconds, reading only the ones that changed.
 
 ## What the mod reads, writes and runs
 
-**Nothing leaves your Mac.** The mod makes no network requests and sends no data anywhere; the only thing it hands outside itself is a `claude://` link, opened by Claude Desktop on the same Mac.
+**What the mod sends, and where: nothing leaves your Mac.** The mod makes no network requests and runs no network tool. What it reads stays inside the mod, apart from three things handed to programs on the same Mac: a `claude://code/…` link with a session id or a project folder, opened by Claude Desktop through `open`; the path of a picture you chose, given to `sips` to scale it; and the tab links in `hotkeys.json`, read by the shortcut helper. None of them reach another service.
 
 **Reads**
 
 - Claude Desktop's session records, `~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json`: each session's folder, title, archive flag and times.
 - Claude Code's running-session files, `~/.claude/sessions/*.json`: each running session's status.
-- Pinned projects' folders, up to four levels deep, for a favicon (`favicon.*`, `icon.*`, `apple-touch-icon.png`, `.claude/icon.*`), skipping `node_modules`, `.git`, build output and the like.
+- Pinned projects' folders, up to four levels deep, for a favicon (`favicon.*`, `icon.*`, `apple-touch-icon.*` and a project's own `.claude/icon.*`), skipping `node_modules`, `.git`, build output and the like.
 - A picture you choose as an icon.
+- The environment variables `HOME` and `TMPDIR`.
 
-**Writes**, all under `~/.claude/project-tabs/` (besides the plugin store Claude Code keeps for it):
+**Writes** one file of its own: `~/.claude/project-tabs/hotkeys.json`, the modifier and where each tab 1…9 leads, written only while keyboard shortcuts are on. The shortcut helper reads it and acts on it (it opens those links when you press the keys); nothing else reads it. Pins and chosen icons go to the plugin store that Claude Code keeps for every plugin. Two programs write files when you ask for what they do: `swiftc` writes the helper to `~/.claude/project-tabs/tabs-hotkeys` when you switch shortcuts on, and `sips` writes a scaled picture to `$TMPDIR/claude-tabs-icon.png` when you choose one.
 
-- `icons/`: copies of the pictures you choose as icons.
-- `hotkeys.json`: the modifier and where each tab 1…9 leads. The shortcut helper reads it and acts on it; nothing else does. Written only while shortcuts are on.
-- `bin/tabs-hotkeys` (and a `README` beside it): the shortcut helper built from `helper/tabs-hotkeys.swift`. Only when you switch shortcuts on.
-- `build/overlay.yaml`, `build/empty.modulemap`: a build setting for `swiftc`, written only on Macs whose Command Line Tools ship a Swift module map twice (a known packaging bug that stops every Swift build); it maps the duplicate onto an empty file for this one build.
-
-**Runs**, each by name with its arguments:
+**Runs**, each by name; the arguments shown in angle brackets are paths or text worked out at the call:
 
 | Program | When | Why |
 | --- | --- | --- |
 | `open claude://code/…` | you click a tab or a recent session, or press a shortcut | switches Claude Desktop to that session |
 | `ps -A -o pid=` | every 4 seconds | tells running sessions from files left by sessions that crashed |
-| `grep -o -m 1 "locale"… config.json` | at session start, and when Claude's settings change | picks out the interface language without the mod reading the file, which also holds account data |
-| `osascript helper/choose-icon.applescript "<prompt>"` | you press **Choose file…** | shows the system's file dialog; the script is in this repository |
-| `sips -s format png -Z 64 <picture> --out <icon>` | after you choose a picture | scales it to 64px |
-| `swiftc -O -o <helper> helper/tabs-hotkeys.swift` | you switch shortcuts on, or the plugin updates while they are on | builds the shortcut helper |
-| `launchctl list` / `submit` / `remove` `com.github.tripolskiydigital.claude-tabs.hotkeys` | shortcuts on, at session start, shortcuts off | starts, checks and stops the shortcut helper |
+| `grep -o -m 1 "locale"… <home>/Library/Application Support/Claude/config.json` | at session start, and when Claude's settings change | picks out the interface language without the mod reading the file, which also holds account data |
+| `osascript <plugin>/helper/choose-icon.applescript "<prompt>"` | you press **Choose file…** | shows the system's file dialog; the script is in this repository |
+| `sips -s format png -Z 64 <picture> --out $TMPDIR/claude-tabs-icon.png` | after you choose a picture | scales it to 64px |
+| `swiftc -O -o <home>/.claude/project-tabs/tabs-hotkeys <plugin>/helper/tabs-hotkeys.swift` | you switch shortcuts on, or the plugin updates while they are on | builds the shortcut helper; on Command Line Tools that ship a Swift module map twice (a known packaging bug that stops every Swift build) it adds `-vfsoverlay <plugin>/helper/build/overlay.yaml`, shipped in this repository, which maps the duplicate onto an empty file |
+| `launchctl list` / `submit` / `remove` `com.github.tripolskiydigital.claude-tabs.hotkeys` | shortcuts on, at session start, shortcuts off | starts, checks and stops the shortcut helper, with no launchd file |
 
 **Hooks and commands**
 
@@ -148,7 +144,7 @@ Switch keyboard shortcuts **Off** in the pane first (it stops the helper), then:
 claude plugin uninstall project-tabs@claude-tabs
 ```
 
-The mod's files are in `~/.claude/project-tabs/`; delete the folder to remove chosen icons and the helper.
+The shortcut helper and `hotkeys.json` are in `~/.claude/project-tabs/`; delete the folder to remove them. Pins and chosen icons go with the plugin's store.
 
 ## Development
 

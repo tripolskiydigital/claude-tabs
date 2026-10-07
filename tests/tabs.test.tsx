@@ -180,9 +180,9 @@ test('the ⋯ button opens the pane, and a second press closes it', async ($, on
   expect(calls).toEqual(['open', 'close'])
 })
 
-test('the pane speaks the language of the desktop and copies a chosen icon file', async ($, on) => {
+test('the pane speaks the language of the desktop and keeps a chosen icon in the store', async ($, on) => {
   const runs: string[][] = []
-  mock.env(on, { HOME })
+  mock.env(on, { HOME, TMPDIR: '/var/folders/x/T/' })
   mock.store(on, { pinned: ['/p/alpha'] })
   on('session.id', () => ({ value: 'cli-a1' }))
   on('session.cwd', () => ({ value: '/p/alpha' }))
@@ -239,8 +239,12 @@ test('the pane speaks the language of the desktop and copies a chosen icon file'
   const target = runs.find(argv => argv[0] === 'sips')
   expect(target?.slice(0, 6)).toEqual(['sips', '-s', 'format', 'png', '-Z', '64'])
   expect(target?.[6]).toBe('/Users/t/Pictures/logo.jpg')
-  expect(target?.[8]).toMatch(/^\/Users\/t\/\.claude\/project-tabs\/icons\/alpha-[0-9a-f]+\.png$/)
-  expect(writes).toContain(target?.[8])
+  expect(target?.[8]).toBe('/var/folders/x/T/claude-tabs-icon.png')
+  // The scaled picture goes to the plugin's store as a data URI: the mod writes no file.
+  expect(writes).toEqual([])
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(JSON.stringify(await band.drawn())).toContain('data:image/png;base64,iVBORw0KGgo=')
+  await band.unmount()
 })
 
 test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers the tabs', async ($, on) => {
@@ -275,7 +279,7 @@ test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers t
   )
   // The helper's source and an up-to-date build of it: no compile needed.
   on('fs.stat', ($, e) =>
-    e.path.endsWith('tabs-hotkeys.swift') || e.path.endsWith('bin/tabs-hotkeys')
+    e.path.endsWith('tabs-hotkeys.swift') || e.path.endsWith('project-tabs/tabs-hotkeys')
       ? { value: { kind: 'file' as const, size: 1, mtimeMs: 5, isLink: false } }
       : { deny: 'missing' },
   )
@@ -314,7 +318,7 @@ test('switching on ⌃1–9 maps the tabs for the agent, starts it and numbers t
   ])
   // launchd runs the helper with no file of its own: nothing goes to ~/Library/LaunchAgents.
   expect(runs).toContain(
-    `launchctl submit -l com.github.tripolskiydigital.claude-tabs.hotkeys -- ${HOME}/.claude/project-tabs/bin/tabs-hotkeys`,
+    `launchctl submit -l com.github.tripolskiydigital.claude-tabs.hotkeys -- ${HOME}/.claude/project-tabs/tabs-hotkeys`,
   )
   expect(Object.keys(writes).some(path => path.includes('LaunchAgents'))).toBe(false)
   expect(runs.some(run => run.startsWith('swiftc'))).toBe(false)
